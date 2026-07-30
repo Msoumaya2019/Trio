@@ -1,0 +1,54 @@
+name: Build Trio unsigned IPA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-26
+    permissions:
+      contents: read
+
+    steps:
+      - name: Télécharger Trio et ses dépendances
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Sélectionner Xcode
+        run: sudo xcode-select --switch /Applications/Xcode_26.2.app/Contents/Developer
+
+      - name: Installer les dépendances
+        run: bundle install
+
+      - name: Compiler sans signature
+        run: |
+          xcodebuild archive \
+            -workspace Trio.xcworkspace \
+            -scheme Trio \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "$RUNNER_TEMP/Trio.xcarchive" \
+            DEVELOPMENT_TEAM=UNSIGNED \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            -skipMacroValidation
+
+      - name: Créer le fichier IPA
+        run: |
+          APP_PATH="$(find "$RUNNER_TEMP/Trio.xcarchive/Products/Applications" \
+            -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          mkdir -p "$RUNNER_TEMP/Payload"
+          cp -R "$APP_PATH" "$RUNNER_TEMP/Payload/"
+          cd "$RUNNER_TEMP"
+          /usr/bin/zip --symlinks -r Trio-unsigned.ipa Payload
+
+      - name: Rendre l’IPA téléchargeable
+        uses: actions/upload-artifact@v6
+        with:
+          name: Trio-unsigned-IPA
+          path: ${{ runner.temp }}/Trio-unsigned.ipa
+          if-no-files-found: error
